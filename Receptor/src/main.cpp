@@ -46,7 +46,7 @@ unsigned long int turnOffMotorTime = 0; //Conta o tempo para desligar o motor
 
 ////////////////////////////////////////////////////////////////////////////
 // Definição de protótipos de funções:
-void IntialMecanicRotine(); //Função para inicializar as rotina de treino
+void InitialMecanicRotine(); //Função para inicializar as rotina de treino
 
 ////////////////////////////////////////////////////////////////////////////
 void setup() { //Função setup
@@ -65,7 +65,7 @@ void setup() { //Função setup
 
 
   //Setup do Teste mecânico:
-  IntialMecanicRotine();  // Teste mecânico
+  InitialMecanicRotine();  // Teste mecânico
   
   // Setup do rádio:
   delay(200);                                //Espera 200ms para inicializar o rádio
@@ -151,7 +151,7 @@ void loop() { //Função loop
   }
 }
 ////////////////////////////////////////////////////////////////////////////
-void IntialMecanicRotine(){
+void InitialMecanicRotine(){
      int initial_time = millis();
      while(millis() - initial_time < TEMPO){
       
