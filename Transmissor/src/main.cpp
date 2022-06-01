@@ -32,8 +32,8 @@ Pacote pack1;                          //Define o pacote 1
 Pacote pack2;                          //Define o pacote 2
 Pacote pack3;                          //Define o pacote 3
 Pacote pack4;                          //Define o pacote 4
-int check[3];                           //Variável para verificar se o pacote foi enviado com sucesso
-unsigned long time_debbug = 10000;      //Variável para realizar o debbug
+int check[3];                          //Variável para verificar se o pacote foi enviado com sucesso
+unsigned long time_debbug = 10000;     //Variável para realizar o debbug
 int cont = 0;                          //Variável para contar a quantida de pacotes enviados
 String dados;                          //Variável para armazenar os dados do
 // pacote (recebe o conteudo ate o caracter que encerra a busca)
@@ -55,7 +55,6 @@ void setup() { //Função setup
   pack1.id = 1; //Define o id do pacote
   pack2.id = 2; //Define o id do pacote
   pack3.id = 3; //Define o id do pacote
-  pack3.id = 4; //Define o id do pacote
 
   // Setup do rádio:
   transmissor.begin();                        //Inicia o rádio

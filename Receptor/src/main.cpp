@@ -137,6 +137,8 @@ void loop() { //Função loop
       turnOffMotorTime = millis(); //Define o tempo para desligar o motor
     }
   }
+
+  // Desliga o robô após 150 milissegundos, caso não tenha recebido nenhum pacote
   if(millis() - turnOffMotorTime > 150){ turnOffMotor = 1; }
   if(turnOffMotor){;
     analogWrite(ENABLE1, 0);
@@ -152,7 +154,7 @@ void loop() { //Função loop
 }
 ////////////////////////////////////////////////////////////////////////////
 void InitialMecanicRotine(){
-     int initial_time = millis();
+     unsigned long initial_time = millis();
      while(millis() - initial_time < TEMPO){
       
         if(millis() - initial_time < TEMPO/2){
