@@ -1,159 +1,311 @@
 #include <Arduino.h>
-////////////////////////////////////////////////////////////////////////////
-/*Autor: Wérikson Alves e Hiago Batista
-  Código de transmissão do pacote de dados por rádio para BDP - UFV
-  Data de início: 28/04/2022
-  Data de finalização: 28/04/2022
-  Versão: 22.1
-  Descrição da alteração: Foi preenchido os comentarios e ajustado o código
-*/
-////////////////////////////////////////////////////////////////////////////
-// Bibliotecas usadas: 
+#include <SPI.h>
+#include "RF24.h"
 
-#include <SPI.h>  //Biblioteca para comunicação com o SPI
-#include "RF24.h" //Biblioteca para comunicação com o rádio
-
-////////////////////////////////////////////////////////////////////////////
-// Definição das portas usadas: D3, D4, D5, D9, D10
-
-#define LED1 5            //Define o pino do LED1
-#define LED2 4            //Define o pino do LED2
-#define BOT1 3            //Define o pino do botão 1
+#define LED1 5 //Define o pino do LED1
+#define LED2 4 //Define o pino do LED2
+#define BOT1 3 //Define o pino do botão 1
+#define BUFFER_SIZE 10 //Define o tamanho do buffer
 RF24 transmissor (9, 10); //Define os pinos de comunicação com o rádio
 
-////////////////////////////////////////////////////////////////////////////
-// Definição de constantes e variáveis:
+// Define a estrutura do pacote
+struct Mensagem {
+  int id;
+  int speed[2];
+};
 
-byte addresses[][6] = {"BDP", "car"};  //Endereço para envio dos pacotes
-#define BUFFER_SIZE 10                 //Tamanho dos dados enviados
-struct Pacote { int id; int vel[2]; }; //Pacote de dados para serem enviados
-// por rádio; id = N; vel = 0 - Esquerda ou 1 - Direita
-Pacote pack1;                          //Define o pacote 1
-Pacote pack2;                          //Define o pacote 2
-Pacote pack3;                          //Define o pacote 3
-Pacote pack4;                          //Define o pacote 4
-int check[3];                          //Variável para verificar se o pacote foi enviado com sucesso
-unsigned long time_debbug = 10000;     //Variável para realizar o debbug
-int cont = 0;                          //Variável para contar a quantida de pacotes enviados
-String dados;                          //Variável para armazenar os dados do
-// pacote (recebe o conteudo ate o caracter que encerra a busca)
-int i;                                 //Variável para contar o número de 
-// pacotes enviados
-int vetorDeDados[6];                   //Vetor para armazenar os dados do pacote
+// Declarar o pacote de mensagens
+Mensagem packet_1; Mensagem packet_2; Mensagem packet_3;
 
-////////////////////////////////////////////////////////////////////////////
-// Definição de protótipos de funções:
-void IntialMecanicRotine(); //Função para inicializar as rotina de treino
-void debug();               //Função para realizar o debbug
+// Declrar string de dados
+String dados;
 
-////////////////////////////////////////////////////////////////////////////
-void setup() { //Função setup
-  Serial.begin(115200); // Abre a porta serial com o 'Baudrate' passado como
-  // parâmetro
+// Array de debug
+bool checkMessage[3] = {0, 0, 0};
+long packetLoss[3] = {0, 0, 0};
+long countPackets = 0;
+unsigned long currentTimeDebug = 0;
+unsigned long lastTimeDebug = 0;
 
-  // Setup das constantes:
-  pack1.id = 1; //Define o id do pacote
-  pack2.id = 2; //Define o id do pacote
-  pack3.id = 3; //Define o id do pacote
+// Protótipo das funções
+void MecanicRotine();
+uint8_t SendMessage(String data, Mensagem packet, int robot);
+uint8_t SendMessage(int data[6], Mensagem packet, int robot);
+void debug(bool check[3]);
 
-  // Setup do rádio:
-  transmissor.begin();                        //Inicia o rádio
-  transmissor.setChannel(83);                 //Define o canal do rádio
-  transmissor.setPALevel(RF24_PA_MIN);        //Define o nível de potência  
-  transmissor.setDataRate( RF24_250KBPS );    //Define a taxa de dados      
-  transmissor.openWritingPipe( addresses[1]); //Define o endereço de escrita
 
-  // Setup das portas:
-  pinMode(BOT1, INPUT_PULLUP); //Define o pino 3 como entrada (Botão)
-  pinMode(LED1, OUTPUT);       //Define o pino 5 como saída (LED1)
-}
+void setup() {
+  //Inicia a comunicação serial com o usuário
+  Serial.begin(115200); 
 
-////////////////////////////////////////////////////////////////////////////
-void loop() { //Função loop
-  // Loop do botão:
-  if(digitalRead(3) == LOW){ //Verifica se o botão foi pressionado
-    digitalWrite(LED1,HIGH); //Aciona o LED1
-    IntialMecanicRotine();   //Inicia a rotina de treino
-    digitalWrite(LED1,LOW);  //Desliga o LED1
-    } 
+  // Define ID da mensagem
+  packet_1.id = 1; packet_2.id = 2; packet_3.id = 3;
+
+  // setup do rádio
+  transmissor.begin();
+  transmissor.setChannel(82);
+  transmissor.setPALevel(RF24_PA_LOW);
+  transmissor.setDataRate(RF24_250KBPS);
   
-  // Loop do controle:
-  if (Serial.available() > 0) {                                                         //Verifica se há dados na porta serial (não for vazia)
-    dados = Serial.readStringUntil('\n');                                               //Lê os dados do pacote
-    if (dados.length() == BUFFER_SIZE - 1) {                                            //Se o comprimento dos dados enviados estiverem corretos
-      transmissor.stopListening();                                                      //Desliga o rádio de recepção
-      
-      // Pacote do rôbo 1:
-      pack1.vel[0] = dados[2]; if (pack1.vel[0] < 0) pack1.vel[0] = pack1.vel[0] + 256; //Define a velocidade do lado esquerdo
-      pack1.vel[1] = dados[3]; if (pack1.vel[1] < 0) pack1.vel[1] = pack1.vel[1] + 256; //Define a velocidade do lado direito
-      check[0] += (int)!transmissor.write(&pack1, sizeof(pack1));                       //Envia o pacote 1
+  // setup das portas
+  pinMode(BOT1, INPUT_PULLUP);
+  pinMode(LED1, OUTPUT);
 
-      // Pacote do rôbo 2:
-      pack2.vel[0] = dados[4]; if (pack2.vel[0] < 0) pack2.vel[0] = pack2.vel[0] + 256; //Define a velocidade do lado esquerdo
-      pack2.vel[1] = dados[5]; if (pack2.vel[1] < 0) pack2.vel[1] = pack2.vel[1] + 256; //Define a velocidade do lado direito
-      check[1] += (int)!transmissor.write(&pack2, sizeof(pack2));                                    //Envia o pacote 2
+  // Print do debug
+  String titles[4] = {"Total", "LossR1%", "LossR2%", "LossR3%"};
+  for(auto i: titles){
+      Serial.print(String(i) + String("   "));
+  }
+  Serial.println("");
+}
 
-      // Pacote do rôbo 3:
-      pack3.vel[0] = dados[6]; if (pack3.vel[0] < 0) pack3.vel[0] = pack3.vel[0] + 256; //Define a velocidade do lado esquerdo
-      pack3.vel[1] = dados[7]; if (pack3.vel[1] < 0) pack3.vel[1] = pack3.vel[1] + 256; //Define a velocidade do lado direito
-      check[2] += (int)!transmissor.write(&pack3, sizeof(pack3));                                    //Envia o pacote 3
+void loop() {
+  // Iniciar teste mecanico e acender led
+  // caso o botão esteja pressionado
+  if(digitalRead(BOT1) == LOW){
+    digitalWrite(LED1, HIGH);
+    MecanicRotine();
+    digitalWrite(LED1, LOW);
+  }
 
-      transmissor.startListening();                                                     //Reinicia o rádio de recepção
-      cont++;
+  // Caso exista mensagem no buffer, enviar para o rádio
+  if(Serial.available() > 0){
+    dados = Serial.readStringUntil('\n');
+    if(dados.length() > 0){
+      // Desliga o rádio de recebimento
+      transmissor.stopListening();
+
+      // Envio dos dados
+      SendMessage(dados, packet_1, 1);
+      SendMessage(dados, packet_2, 2);
+      SendMessage(dados, packet_3, 3);
+
+      // Liga o rádio de recebimento
+      transmissor.startListening();
     }
-    debug();
   }
 }
 
-////////////////////////////////////////////////////////////////////////////
-void IntialMecanicRotine() { //Função treino
-  //Loop para enviar os dados
-  for (i = 50; i < 70; i++) {                                                                //Variação de velocidade
-    vetorDeDados[0] = 150+i;                                                                 //Define a velocidade do lado esquerdo - Rôbo 1
-    vetorDeDados[1] = 150+i;                                                                 //Define a velocidade do lado direito - Rôbo 1
-    vetorDeDados[2] = 150+i;                                                                 //Define a velocidade do lado esquerdo - Rôbo 2
-    vetorDeDados[3] = 150-i;                                                                 //Define a velocidade do lado direito - Rôbo 2
-    vetorDeDados[4] = 150-i;                                                                 //Define a velocidade do lado esquerdo - Rôbo 3
-    vetorDeDados[5] = 150-i;                                                                 //Define a velocidade do lado direito - Rôbo 3
-    transmissor.stopListening();                                                             //Desliga o rádio de recepção
+// Implementação das funções
 
-    // Pacote do rôbo 1:
-    pack1.vel[0] = vetorDeDados[0]; if (pack1.vel[0] < 0) pack1.vel[0] = pack1.vel[0] + 256; //Define a velocidade do lado esquerdo
-    pack1.vel[1] = vetorDeDados[1]; if (pack1.vel[1] < 0) pack1.vel[1] = pack1.vel[1] + 256; //Define a velocidade do lado direito
-    //Envia o pacote 1
-    check[0] += (int)!transmissor.write(&pack1, sizeof(pack1));
+void MecanicRotine(){ // Função para teste mecanico
 
-    // Pacote do rôbo 2:
-    pack2.vel[0] = vetorDeDados[2]; if (pack2.vel[0] < 0) pack2.vel[0] = pack2.vel[0] + 256; //Define a velocidade do lado esquerdo
-    pack2.vel[1] = vetorDeDados[3]; if (pack2.vel[1] < 0) pack2.vel[1] = pack2.vel[1] + 256; //Define a velocidade do lado direito
-    //Envia o pacote 2
-    check[1] += (int)!transmissor.write(&pack2, sizeof(pack2));
+  // Variaveis de tempo
+  unsigned long previousTime;
 
-    // Pacote do rôbo 3:
-    pack3.vel[0] = vetorDeDados[4]; if (pack3.vel[0] < 0) pack3.vel[0] = pack3.vel[0] + 256; //Define a velocidade do lado esquerdo
-    pack3.vel[1] = vetorDeDados[5]; if (pack3.vel[1] < 0) pack3.vel[1] = pack3.vel[1] + 256; //Define a velocidade do lado direito
-    //Envia o pacote 3
-    check[2] += (int)!transmissor.write(&pack3, sizeof(pack3));
+  // Define o vetor para o teste mecanico
+  int mechanical_test[6];
 
-    transmissor.startListening();                                                            //Reinicia o rádio de recepção
-    cont++;
-    debug();
-    delay(30);                                                                               //Delay de 30ms
+  // Desliga o rádio de recebimento
+  transmissor.stopListening();
+
+  for(int i = 50; i < 70; i++){
+    mechanical_test[0] = 100;
+    mechanical_test[1] = 200;
+    mechanical_test[2] = 100;
+    mechanical_test[3] = 200;
+    mechanical_test[4] = 100;
+    mechanical_test[5] = 200;
+
+    // Envio dos dados
+    checkMessage[0] = SendMessage(mechanical_test, packet_1, 1);
+    checkMessage[1] = SendMessage(mechanical_test, packet_2, 2);
+    checkMessage[2] = SendMessage(mechanical_test, packet_3, 3);
+    debug(checkMessage);
+
+
+    // Aguarda 30 ms
+    while(millis() - previousTime <= 30){
+      // Não faz nada
+    }
+    previousTime = millis();
+
+  }
+
+  // Liga o rádio de recebimento
+  transmissor.startListening();
+
+}
+uint8_t SendMessage(String data, Mensagem packet, int robot){ // Função para enviar mensagem
+  transmissor.stopListening();
+  if(robot == 1){
+    byte address[][8] = {"BDPt", "CAR1"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_1.speed[0] = data[2];
+    if(packet_1.speed[0] < 0){
+      packet_1.speed[0] = packet_1.speed[0]  + 256;
+    }
+    packet_1.speed[1] = data[3];
+    if(packet_1.speed[1] < 0){
+      packet_1.speed[1] = packet_1.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_1, sizeof(packet_1));
+  }
+
+  else if(robot == 2){
+    byte address[][8] = {"BDPt", "CAR2"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_2.speed[0] = data[4];
+    if(packet_2.speed[0] < 0){
+      packet_2.speed[0] = packet_2.speed[0]  + 256;
+    }
+    packet_2.speed[1] = data[5];
+    if(packet_2.speed[1] < 0){
+      packet_2.speed[1] = packet_2.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_2, sizeof(packet_2));
+  }
+
+  else if(robot == 3){
+    byte address[][8] = {"BDPt", "CAR3"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_3.speed[0] = data[6];
+    if(packet_3.speed[0] < 0){
+      packet_3.speed[0] = packet_3.speed[0]  + 256;
+    }
+    packet_3.speed[1] = data[7];
+    if(packet_3.speed[1] < 0){
+      packet_3.speed[1] = packet_3.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_3, sizeof(packet_3));
+  }
+  return 0;
+}
+
+uint8_t SendMessage(int data[6], Mensagem packet, int robot){ // Função para enviar mensagem
+  transmissor.stopListening();
+  if(robot == 1){
+    byte address[][8] = {"BDPt", "CAR1"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_1.speed[0] = data[0];
+    if(packet_1.speed[0] < 0){
+      packet_1.speed[0] = packet_1.speed[0]  + 256;
+    }
+    packet_1.speed[1] = data[1];
+    if(packet_1.speed[1] < 0){
+      packet_1.speed[1] = packet_1.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_1, sizeof(packet_1));
+  }
+
+  else if(robot == 2){
+    byte address[][8] = {"BDPt", "CAR2"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_2.speed[0] = data[2];
+    if(packet_2.speed[0] < 0){
+      packet_2.speed[0] = packet_2.speed[0]  + 256;
+    }
+    packet_2.speed[1] = data[3];
+    if(packet_2.speed[1] < 0){
+      packet_2.speed[1] = packet_2.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_2, sizeof(packet_2));
+  }
+
+  else if(robot == 3){
+    byte address[][8] = {"BDPt", "CAR3"};
+    transmissor.openWritingPipe(address[1]);
+
+    // Definindo a mensagem
+    packet_3.speed[0] = data[4];
+    if(packet_3.speed[0] < 0){
+      packet_3.speed[0] = packet_3.speed[0]  + 256;
+    }
+    packet_3.speed[1] = data[5];
+    if(packet_3.speed[1] < 0){
+      packet_3.speed[1] = packet_3.speed[1]  + 256;
+    }
+
+    return transmissor.write(&packet_3, sizeof(packet_3));
+  }
+  return 0;
+}
+
+void debug(bool check[3]){
+  countPackets+=1;
+  if(check[0] == 0){
+    packetLoss[0]+=1;
+  }
+
+  if(check[1] == 0){
+    packetLoss[1]+=1;
+  }
+
+  if(check[2] == 0){
+    packetLoss[2]+=1;
+  }
+
+    if(millis() - lastTimeDebug >= 10000){
+      Serial.print(String(countPackets) + "\t" + String(100.0 * packetLoss[0]/countPackets) + "    " + String(100.0 * packetLoss[1]/countPackets) + "    " + String(100.0 * packetLoss[2] / countPackets) + "\t\r");
+      countPackets = 0;
+      packetLoss[0] = 0;
+      packetLoss[1] = 0;
+      packetLoss[2] = 0;
+      lastTimeDebug = millis();
+    }
+    
+}
+
+/*
+void AndaFrente(){
+  unsigned long previousTime;
+  int mechanical_test[6];
+  transmissor.stopListening();
+  for(int i=50; i<70; i++){
+    mechanical_test[0] = 200;
+    mechanical_test[1] = 200;
+    mechanical_test[2] = 200;
+    mechanical_test[3] = 200;
+    mechanical_test[4] = 200;
+    mechanical_test[5] = 200;
+
+    SendMessage(mechanical_test, packet_1, 1);
+    SendMessage(mechanical_test, packet_2, 2);
+    SendMessage(mechanical_test, packet_3, 3);
+
+    while(millis() - previousTime <= 30){
+
+    }
+    previousTime = millis();
   }
 }
 
-void debug(){
-  if(time_debbug <= millis()){
-      if(cont > 0){
-        Serial.print("Pacotes enviados: "); Serial.println(cont);
-        Serial.print("Perda de pacote do robô 1 por minuto: "); Serial.print((double) 100 * check[0] / cont);  Serial.println("%");
-        Serial.print("Perda de pacote do robô 2 por minuto: "); Serial.print((double) 100 * check[1] / cont);  Serial.println("%");
-        Serial.print("Perda de pacote do robô 3 por minuto: "); Serial.print((double) 100 * check[2] / cont);  Serial.println("%");
-      }
-      time_debbug += millis();
-      cont = 0;
-      check[0] = 0;
-      check[1] = 0;
-      check[2] = 0;
+void AndaTras(){
+  unsigned long previousTime;
+  int mechanical_test[6];
+  transmissor.stopListening();
+  for(int i=50; i<70; i++){
+    mechanical_test[0] = 80;
+    mechanical_test[1] = 80;
+    mechanical_test[2] = 80;
+    mechanical_test[3] = 80;
+    mechanical_test[4] = 80;
+    mechanical_test[5] = 80;
+
+    SendMessage(mechanical_test, packet_1, 1);
+    SendMessage(mechanical_test, packet_2, 2);
+    SendMessage(mechanical_test, packet_3, 3);
+
+    while(millis() - previousTime <= 30){
+
     }
+    previousTime = millis();
+  }
 }
+
+*/
