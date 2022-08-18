@@ -26,12 +26,15 @@ long packetLoss[3] = {0, 0, 0};
 long countPackets = 0;
 unsigned long currentTimeDebug = 0;
 unsigned long lastTimeDebug = 0;
+unsigned long lastTimeDebug2 = 0;
 
 // Protótipo das funções
 void MecanicRotine();
 uint8_t SendMessage(String data, Mensagem packet, int robot);
 uint8_t SendMessage(int data[6], Mensagem packet, int robot);
 void debug(bool check[3]);
+void showLossPackets();
+void MecanicRotine(String data);
 
 
 void setup() {
@@ -52,11 +55,11 @@ void setup() {
   pinMode(LED1, OUTPUT);
 
   // Print do debug
-  String titles[4] = {"Total", "LossR1%", "LossR2%", "LossR3%"};
-  for(auto i: titles){
-      Serial.print(String(i) + String("   "));
-  }
-  Serial.println("");
+  //String titles[4] = {"Total", "LossR1%", "LossR2%", "LossR3%"};
+  //for(auto i: titles){
+  //    Serial.print(String(i) + String("   "));
+  //}
+  //Serial.println("");
 }
 
 void loop() {
@@ -71,19 +74,29 @@ void loop() {
   // Caso exista mensagem no buffer, enviar para o rádio
   if(Serial.available() > 0){
     dados = Serial.readStringUntil('\n');
-    if(dados.length() > 0){
-      // Desliga o rádio de recebimento
-      transmissor.stopListening();
+    if(dados.length() == BUFFER_SIZE - 1){
 
-      // Envio dos dados
-      SendMessage(dados, packet_1, 1);
-      SendMessage(dados, packet_2, 2);
-      SendMessage(dados, packet_3, 3);
+        // Desliga o rádio de recebimento
+        transmissor.stopListening();
 
-      // Liga o rádio de recebimento
-      transmissor.startListening();
+        // Envio dos dados
+        checkMessage[0] = SendMessage(dados, packet_1, 1);
+        checkMessage[1] = SendMessage(dados, packet_2, 2);
+        checkMessage[2] = SendMessage(dados, packet_3, 3);
+        debug(checkMessage);
+        
+
+        // Liga o rádio de recebimento
+        transmissor.startListening();
+    
     }
   }
+
+
+ if((countPackets > 0) && (millis() - lastTimeDebug2 > 10000)){
+    showLossPackets();
+    lastTimeDebug2 = millis();
+ }
 }
 
 // Implementação das funções
@@ -121,7 +134,7 @@ void MecanicRotine(){ // Função para teste mecanico
     previousTime = millis();
 
   }
-
+  showLossPackets();
   // Liga o rádio de recebimento
   transmissor.startListening();
 
@@ -249,63 +262,51 @@ void debug(bool check[3]){
   if(check[2] == 0){
     packetLoss[2]+=1;
   }
-
-    if(millis() - lastTimeDebug >= 10000){
-      Serial.print(String(countPackets) + "\t" + String(100.0 * packetLoss[0]/countPackets) + "    " + String(100.0 * packetLoss[1]/countPackets) + "    " + String(100.0 * packetLoss[2] / countPackets) + "\t\r");
-      countPackets = 0;
-      packetLoss[0] = 0;
-      packetLoss[1] = 0;
-      packetLoss[2] = 0;
-      lastTimeDebug = millis();
-    }
-    
+      
 }
 
-/*
-void AndaFrente(){
+void showLossPackets(){
+  Serial.println(String(countPackets) + " " + String(100.0 * packetLoss[0]/countPackets) + " " + String(100.0 * packetLoss[1]/countPackets) + " " + String(100.0 * packetLoss[2] / countPackets));
+  countPackets = 0;
+  packetLoss[0] = 0;
+  packetLoss[1] = 0;
+  packetLoss[2] = 0;
+}
+
+void MecanicRotine(String data){ // Função para teste mecanico
+
+  // Variaveis de tempo
   unsigned long previousTime;
+
+  // Define o vetor para o teste mecanico
   int mechanical_test[6];
+
+  // Desliga o rádio de recebimento
   transmissor.stopListening();
-  for(int i=50; i<70; i++){
-    mechanical_test[0] = 200;
-    mechanical_test[1] = 200;
-    mechanical_test[2] = 200;
-    mechanical_test[3] = 200;
-    mechanical_test[4] = 200;
-    mechanical_test[5] = 200;
 
-    SendMessage(mechanical_test, packet_1, 1);
-    SendMessage(mechanical_test, packet_2, 2);
-    SendMessage(mechanical_test, packet_3, 3);
+  for(int i = 0; i < 50; i++){
+    mechanical_test[0] = (int) data[2];
+    mechanical_test[1] = (int) data[3];
+    mechanical_test[2] = (int) data[4];
+    mechanical_test[3] = (int) data[5];
+    mechanical_test[4] = (int) data[6];
+    mechanical_test[5] = (int) data[7];
 
+    // Envio dos dados
+    checkMessage[0] = SendMessage(mechanical_test, packet_1, 1);
+    checkMessage[1] = SendMessage(mechanical_test, packet_2, 2);
+    checkMessage[2] = SendMessage(mechanical_test, packet_3, 3);
+    debug(checkMessage);
+
+    // Aguarda 30 ms
     while(millis() - previousTime <= 30){
-
+      // Não faz nada
     }
     previousTime = millis();
+
   }
+  showLossPackets();
+  // Liga o rádio de recebimento
+  transmissor.startListening();
+
 }
-
-void AndaTras(){
-  unsigned long previousTime;
-  int mechanical_test[6];
-  transmissor.stopListening();
-  for(int i=50; i<70; i++){
-    mechanical_test[0] = 80;
-    mechanical_test[1] = 80;
-    mechanical_test[2] = 80;
-    mechanical_test[3] = 80;
-    mechanical_test[4] = 80;
-    mechanical_test[5] = 80;
-
-    SendMessage(mechanical_test, packet_1, 1);
-    SendMessage(mechanical_test, packet_2, 2);
-    SendMessage(mechanical_test, packet_3, 3);
-
-    while(millis() - previousTime <= 30){
-
-    }
-    previousTime = millis();
-  }
-}
-
-*/
